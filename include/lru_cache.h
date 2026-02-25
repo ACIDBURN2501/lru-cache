@@ -7,9 +7,10 @@
  *
  * Configuration macros (define before including or pass via -D):
  *   LRU_CACHE_MAX_ENTRIES      - Max items stored (default 16).
- *   LRU_CACHE_HASH_TABLE_SIZE  - Hash table slots; prime >= MAX_ENTRIES (default 17).
- *   LRU_CACHE_MAX_PROBES       - Collision probe limit, bounds WCET (default 4).
- *   LRU_CACHE_LOOKUP_STRATEGY  - LRU_CACHE_LOOKUP_HASH or LRU_CACHE_LOOKUP_LINEAR.
+ *   LRU_CACHE_HASH_TABLE_SIZE  - Hash table slots; prime >= MAX_ENTRIES
+ * (default 17). LRU_CACHE_MAX_PROBES       - Collision probe limit, bounds WCET
+ * (default 4). LRU_CACHE_LOOKUP_STRATEGY  - LRU_CACHE_LOOKUP_HASH or
+ * LRU_CACHE_LOOKUP_LINEAR.
  */
 
 #ifndef LRU_CACHE_H
@@ -67,7 +68,8 @@
  *
  * Default: LRU_CACHE_LOOKUP_HASH.
  * Override by defining before including this header or via -D on the
- * compiler command line (e.g. -DLRU_CACHE_LOOKUP_STRATEGY=LRU_CACHE_LOOKUP_LINEAR).
+ * compiler command line (e.g.
+ * -DLRU_CACHE_LOOKUP_STRATEGY=LRU_CACHE_LOOKUP_LINEAR).
  */
 #ifndef LRU_CACHE_LOOKUP_STRATEGY
 #define LRU_CACHE_LOOKUP_STRATEGY LRU_CACHE_LOOKUP_HASH
@@ -91,10 +93,10 @@
  * violations (MISRA Rule 18.4) and to keep the structure relocatable.
  */
 typedef struct {
-        uint32_t key;      /**< Unique key identifier. */
-        uint32_t value;    /**< Associated data value. */
-        int16_t  prev_idx; /**< Index of previous node, -1 if none. */
-        int16_t  next_idx; /**< Index of next node, -1 if none. */
+        uint32_t key;     /**< Unique key identifier. */
+        uint32_t value;   /**< Associated data value. */
+        int16_t prev_idx; /**< Index of previous node, -1 if none. */
+        int16_t next_idx; /**< Index of next node, -1 if none. */
 } lru_cache_node_t;
 
 /**
@@ -104,12 +106,13 @@ typedef struct {
  * embedded targets.
  */
 typedef struct {
-        uint16_t         capacity; /**< Configured item limit. */
-        uint16_t         size;     /**< Current number of stored items. */
-        int16_t          head_idx; /**< MRU node index, -1 when empty. */
-        int16_t          tail_idx; /**< LRU node index, -1 when empty. */
+        uint16_t capacity; /**< Configured item limit. */
+        uint16_t size;     /**< Current number of stored items. */
+        int16_t head_idx;  /**< MRU node index, -1 when empty. */
+        int16_t tail_idx;  /**< LRU node index, -1 when empty. */
         lru_cache_node_t nodes[LRU_CACHE_MAX_ENTRIES]; /**< Node storage. */
-        int16_t          hash_table[LRU_CACHE_HASH_TABLE_SIZE]; /**< key -> node index. */
+        int16_t
+            hash_table[LRU_CACHE_HASH_TABLE_SIZE]; /**< key -> node index. */
 } lru_cache_t;
 
 /* -------------------------------------------------------------------------
@@ -134,7 +137,8 @@ void lru_cache_init(lru_cache_t *cache_ptr, uint16_t capacity);
  *
  * @param cache_ptr  Pointer to an initialised lru_cache_t (must not be NULL).
  * @param key        Key to search for (must not equal LRU_CACHE_INVALID_KEY).
- * @param[out] out_value  Receives the stored value on success (must not be NULL).
+ * @param[out] out_value  Receives the stored value on success (must not be
+ * NULL).
  * @return true on cache hit, false on miss or invalid arguments.
  */
 bool lru_cache_get(const lru_cache_t *cache_ptr, uint32_t key,
@@ -147,7 +151,8 @@ bool lru_cache_get(const lru_cache_t *cache_ptr, uint32_t key,
  * If the cache is full the LRU entry is evicted before insertion.
  *
  * @param cache_ptr  Pointer to an initialised lru_cache_t (must not be NULL).
- * @param key        Key to insert/update (must not equal LRU_CACHE_INVALID_KEY).
+ * @param key        Key to insert/update (must not equal
+ * LRU_CACHE_INVALID_KEY).
  * @param value      Value to store.
  * @return true on success, false on invalid arguments or internal error.
  */

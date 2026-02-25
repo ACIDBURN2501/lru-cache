@@ -23,7 +23,8 @@
 static uint16_t
 compute_hash(uint32_t key)
 {
-        /* Fibonacci / golden-ratio multiplier -- good avalanche for 32-bit keys */
+        /* Fibonacci / golden-ratio multiplier -- good avalanche for 32-bit keys
+         */
         const uint32_t hash_prime = 0x9E3779B9U;
         /*
          * Use modulo (not bitwise AND) so the distribution is correct for
@@ -31,7 +32,8 @@ compute_hash(uint32_t key)
          * prime of 17).  Both operands are unsigned, so this is
          * MISRA-compliant.
          */
-        return (uint16_t)((key * hash_prime) % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+        return (uint16_t)((key * hash_prime)
+                          % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
 }
 
 /**
@@ -99,7 +101,7 @@ static int16_t
 find_node_index(const lru_cache_t *cache_ptr, uint32_t key)
 {
 #if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
-        uint16_t hash_idx   = compute_hash(key);
+        uint16_t hash_idx = compute_hash(key);
         uint16_t probe_count = 0U;
 
         while (probe_count < LRU_CACHE_MAX_PROBES) {
@@ -144,14 +146,14 @@ lru_cache_init(lru_cache_t *cache_ptr, uint16_t capacity)
         }
 
         cache_ptr->capacity = (capacity == 0U) ? 1U : capacity;
-        cache_ptr->size     = 0U;
+        cache_ptr->size = 0U;
         cache_ptr->head_idx = -1;
         cache_ptr->tail_idx = -1;
 
         /* Initialise all node slots (Rule 9.1: no uninitialised reads). */
         for (uint16_t i = 0U; i < LRU_CACHE_MAX_ENTRIES; i++) {
-                cache_ptr->nodes[i].key      = LRU_CACHE_INVALID_KEY;
-                cache_ptr->nodes[i].value    = 0U;
+                cache_ptr->nodes[i].key = LRU_CACHE_INVALID_KEY;
+                cache_ptr->nodes[i].value = 0U;
                 cache_ptr->nodes[i].prev_idx = -1;
                 cache_ptr->nodes[i].next_idx = -1;
         }
@@ -217,15 +219,19 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                          * this node.  We must probe, because the node may have
                          * been placed at a probed offset from its natural slot.
                          */
-                        uint16_t old_hash   = compute_hash(cache_ptr->nodes[lru_idx].key);
+                        uint16_t old_hash =
+                            compute_hash(cache_ptr->nodes[lru_idx].key);
                         uint16_t evict_probe = 0U;
                         while (evict_probe < LRU_CACHE_MAX_PROBES) {
-                                if (cache_ptr->hash_table[old_hash] == lru_idx) {
+                                if (cache_ptr->hash_table[old_hash]
+                                    == lru_idx) {
                                         cache_ptr->hash_table[old_hash] = -1;
                                         break;
                                 }
-                                old_hash = (uint16_t)((old_hash + 1U)
-                                                      % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+                                old_hash =
+                                    (uint16_t)((old_hash + 1U)
+                                               % (uint32_t)
+                                                   LRU_CACHE_HASH_TABLE_SIZE);
                                 evict_probe++;
                         }
 
@@ -238,8 +244,8 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
         }
 
         /* Find the first free node slot (INVALID_KEY marker). */
-        int16_t  free_idx = -1;
-        uint16_t i        = 0U;
+        int16_t free_idx = -1;
+        uint16_t i = 0U;
         while (i < LRU_CACHE_MAX_ENTRIES) {
                 if (cache_ptr->nodes[i].key == LRU_CACHE_INVALID_KEY) {
                         free_idx = (int16_t)i;
@@ -253,14 +259,14 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
         }
 
         /* Write the new node. */
-        cache_ptr->nodes[free_idx].key   = key;
+        cache_ptr->nodes[free_idx].key = key;
         cache_ptr->nodes[free_idx].value = value;
 
         /*
          * Insert into the hash table with linear probing so that colliding
          * keys are placed in adjacent slots and can be found during lookup.
          */
-        uint16_t hash_idx    = compute_hash(key);
+        uint16_t hash_idx = compute_hash(key);
         uint16_t insert_probe = 0U;
         while (insert_probe < LRU_CACHE_MAX_PROBES) {
                 if (cache_ptr->hash_table[hash_idx] == -1) {

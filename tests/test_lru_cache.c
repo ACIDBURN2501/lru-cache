@@ -11,25 +11,25 @@
 
 #include "lru_cache.h"
 
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 
 /* -------------------------------------------------------------------------
  * Minimal test runner (no external dependencies)
  * ------------------------------------------------------------------------- */
 
-static int g_tests_run    = 0;
+static int g_tests_run = 0;
 static int g_tests_failed = 0;
 
-#define RUN_TEST(fn)                                    \
-        do {                                            \
-                g_tests_run++;                          \
-                if ((fn)() != 0) {                      \
-                        printf("FAIL  %s\n", #fn);      \
-                        g_tests_failed++;               \
-                } else {                                \
-                        printf("pass  %s\n", #fn);      \
-                }                                       \
+#define RUN_TEST(fn)                                                           \
+        do {                                                                   \
+                g_tests_run++;                                                 \
+                if ((fn)() != 0) {                                             \
+                        printf("FAIL  %s\n", #fn);                             \
+                        g_tests_failed++;                                      \
+                } else {                                                       \
+                        printf("pass  %s\n", #fn);                             \
+                }                                                              \
         } while (0)
 
 /* -------------------------------------------------------------------------
@@ -54,7 +54,7 @@ static int
 test_init_empty(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0xDEADBEEFU;
+        uint32_t val = 0xDEADBEEFU;
 
         lru_cache_init(&cache, 4U);
 
@@ -82,7 +82,7 @@ static int
 test_put_get_single(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0U;
+        uint32_t val = 0U;
 
         lru_cache_init(&cache, 4U);
 
@@ -109,7 +109,7 @@ static int
 test_get_miss(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0xFFU;
+        uint32_t val = 0xFFU;
 
         lru_cache_init(&cache, 4U);
         lru_cache_put(&cache, 10U, 100U);
@@ -133,7 +133,7 @@ static int
 test_eviction_lru(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0U;
+        uint32_t val = 0U;
 
         lru_cache_init(&cache, 3U);
 
@@ -169,7 +169,7 @@ static int
 test_update_existing_key(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0U;
+        uint32_t val = 0U;
 
         lru_cache_init(&cache, 4U);
 
@@ -196,7 +196,7 @@ static int
 test_get_promotes_to_mru(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0U;
+        uint32_t val = 0U;
 
         lru_cache_init(&cache, 3U);
 
@@ -235,7 +235,7 @@ static int
 test_null_pointer_safety(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0U;
+        uint32_t val = 0U;
 
         /* init with NULL must not crash */
         lru_cache_init(NULL, 4U);
@@ -262,8 +262,8 @@ static int
 test_fill_to_capacity(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0U;
-        uint32_t    k;
+        uint32_t val = 0U;
+        uint32_t k;
 
         /*
          * Use keys spaced 100 apart to reduce hash-collision probability
@@ -300,7 +300,7 @@ static int
 test_invalid_key_rejected(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0U;
+        uint32_t val = 0U;
 
         lru_cache_init(&cache, 4U);
 
@@ -324,7 +324,7 @@ static int
 test_sequential_evictions(void)
 {
         lru_cache_t cache;
-        uint32_t    val = 0U;
+        uint32_t val = 0U;
 
         lru_cache_init(&cache, 2U);
 
@@ -373,6 +373,7 @@ main(void)
         RUN_TEST(test_invalid_key_rejected);
         RUN_TEST(test_sequential_evictions);
 
-        printf("\n%d/%d tests passed.\n", g_tests_run - g_tests_failed, g_tests_run);
+        printf("\n%d/%d tests passed.\n", g_tests_run - g_tests_failed,
+               g_tests_run);
         return (g_tests_failed == 0) ? 0 : 1;
 }
