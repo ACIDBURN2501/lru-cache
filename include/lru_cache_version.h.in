@@ -1,0 +1,14 @@
+/**
+ * @file lru_cache_version.h
+ * @brief Auto-generated version information.  Do not edit by hand.
+ */
+
+#ifndef LRU_CACHE_VERSION_H
+#define LRU_CACHE_VERSION_H
+
+#define LRU_CACHE_VERSION       "@LRU_CACHE_VERSION@"
+#define LRU_CACHE_VERSION_MAJOR @LRU_CACHE_VERSION_MAJOR@
+#define LRU_CACHE_VERSION_MINOR @LRU_CACHE_VERSION_MINOR@
+#define LRU_CACHE_VERSION_PATCH @LRU_CACHE_VERSION_PATCH@
+
+#endif /* LRU_CACHE_VERSION_H */
