@@ -1,0 +1,16 @@
+option(
+        'build_tests',
+        type        : 'boolean',
+        value       : false,
+        description : 'Build the unit test suite',
+)
+
+option(
+        'lookup_strategy',
+        type        : 'combo',
+        choices     : ['hash', 'linear'],
+        value       : 'hash',
+        description : 'Lookup strategy used when building the installed library '
+                    + '(hash = O(1) average with bounded WCET, '
+                    + 'linear = O(n) with guaranteed WCET = N)',
+)
