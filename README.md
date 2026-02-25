@@ -1,5 +1,7 @@
 # lru-cache
 
+[![CI](https://github.com/ACIDBURN2501/lru-cache/actions/workflows/ci.yml/badge.svg)](https://github.com/ACIDBURN2501/lru-cache/actions/workflows/ci.yml)
+
 A static-memory, deterministic Least Recently Used (LRU) cache in C for
 safety-critical embedded systems.
 
