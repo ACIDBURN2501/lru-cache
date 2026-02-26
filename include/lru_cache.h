@@ -8,9 +8,11 @@
  * Configuration macros (define before including or pass via -D):
  *   LRU_CACHE_MAX_ENTRIES      - Max items stored (default 16).
  *   LRU_CACHE_HASH_TABLE_SIZE  - Hash table slots; prime >= MAX_ENTRIES
- * (default 17). LRU_CACHE_MAX_PROBES       - Collision probe limit, bounds WCET
- * (default 4). LRU_CACHE_LOOKUP_STRATEGY  - LRU_CACHE_LOOKUP_HASH or
- * LRU_CACHE_LOOKUP_LINEAR.
+ *                                (default 17).
+ *   LRU_CACHE_MAX_PROBES       - Collision probe limit, bounds WCET
+ *                                (default 4).
+ *   LRU_CACHE_LOOKUP_STRATEGY  - LRU_CACHE_LOOKUP_HASH or
+ *                                LRU_CACHE_LOOKUP_LINEAR.
  */
 
 #ifndef LRU_CACHE_H
