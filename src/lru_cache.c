@@ -231,11 +231,14 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                         uint16_t old_hash =
                             compute_hash(cache_ptr->nodes[lru_idx].key);
                         uint16_t evict_probe = 0U;
+                        bool hash_slot_found = false;
+
                         while (evict_probe < LRU_CACHE_MAX_PROBES) {
                                 if (cache_ptr->hash_table[old_hash]
                                     == lru_idx) {
                                         cache_ptr->hash_table[old_hash] =
                                             LRU_CACHE_HASH_TOMBSTONE;
+                                        hash_slot_found = true;
                                         break;
                                 }
                                 old_hash =
@@ -245,8 +248,27 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                                 evict_probe++;
                         }
 
+                        /*
+                         * If we cannot find the hash slot pointing to the LRU
+                         * node, abort the operation. Proceeding would leave a
+                         * stale hash table entry that points to this
+                         * (soon-to-be reused) node index, leading to duplicate
+                         * entries and silent data corruption once the node is
+                         * repopulated.
+                         */
+                        if (!hash_slot_found) {
+                                return false;
+                        }
+
                         remove_from_list(cache_ptr, lru_idx);
                         cache_ptr->nodes[lru_idx].key = LRU_CACHE_INVALID_KEY;
+                } else {
+                        /*
+                         * tail_idx is -1 but size >= capacity. This should
+                         * never happen in a correctly initialized cache and
+                         * indicates internal corruption. Fail safely.
+                         */
+                        return false;
                 }
                 /* size stays the same -- we are replacing one item */
         } else {

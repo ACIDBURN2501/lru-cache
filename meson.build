@@ -1,7 +1,7 @@
 project(
         'lru-cache',
         'c',
-        version         : '1.0.4',
+        version         : '1.0.5',
         license         : 'MIT',
         default_options : [
                 'c_std=c11',
