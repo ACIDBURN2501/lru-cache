@@ -174,7 +174,7 @@ lru_cache_init(lru_cache_t *cache_ptr, uint16_t capacity)
 }
 
 bool
-lru_cache_get(const lru_cache_t *cache_ptr, uint32_t key, uint32_t *out_value)
+lru_cache_get(lru_cache_t *cache_ptr, uint32_t key, uint32_t *out_value)
 {
         if (cache_ptr == NULL || out_value == NULL
             || key == LRU_CACHE_INVALID_KEY) {
@@ -188,14 +188,8 @@ lru_cache_get(const lru_cache_t *cache_ptr, uint32_t key, uint32_t *out_value)
 
         *out_value = cache_ptr->nodes[node_idx].value;
 
-        /*
-         * Promote to MRU.  The cache state is logically mutable even through
-         * a const pointer (ordering metadata, not user data).  The cast is
-         * intentional and safe; document it explicitly for MISRA reviewers.
-         */
-        lru_cache_t *mut = (lru_cache_t *)(uintptr_t)cache_ptr;
-        remove_from_list(mut, node_idx);
-        add_to_front(mut, node_idx);
+        remove_from_list(cache_ptr, node_idx);
+        add_to_front(cache_ptr, node_idx);
 
         return true;
 }

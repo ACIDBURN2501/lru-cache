@@ -152,8 +152,7 @@ void lru_cache_init(lru_cache_t *cache_ptr, uint16_t capacity);
  * NULL).
  * @return true on cache hit, false on miss or invalid arguments.
  */
-bool lru_cache_get(const lru_cache_t *cache_ptr, uint32_t key,
-                   uint32_t *out_value);
+bool lru_cache_get(lru_cache_t *cache_ptr, uint32_t key, uint32_t *out_value);
 
 /**
  * @brief Insert or update a key-value pair.
