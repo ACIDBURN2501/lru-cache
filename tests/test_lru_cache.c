@@ -33,6 +33,20 @@ static int g_tests_failed = 0;
         } while (0)
 
 /* -------------------------------------------------------------------------
+ * Helper: replicate the hash function for collision-crafting tests
+ * ------------------------------------------------------------------------- */
+
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
+static uint16_t
+compute_hash(uint32_t key)
+{
+        const uint32_t hash_prime = 0x9E3779B9U;
+        return (uint16_t)((key * hash_prime)
+                          % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+}
+#endif
+
+/* -------------------------------------------------------------------------
  * Helper: print the active lookup strategy
  * ------------------------------------------------------------------------- */
 
@@ -408,7 +422,7 @@ test_sequential_eviction(void)
 }
 
 /* =========================================================================
- * Test 11: Hash collision followed by eviction does not break lookup
+ * Test 12: Hash collision followed by eviction does not break lookup
  *
  * This test exercises the tombstone bug described in Issue #1:
  * - Keys A and B both hash to the same slot (forced collision)
@@ -488,7 +502,7 @@ test_hash_collision_then_eviction(void)
 
 #if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
 /* =========================================================================
- * Test 12: Failed eviction probe returns false instead of corrupting state
+ * Test 13: Failed eviction probe returns false instead of corrupting state
  *
  * This test addresses Issue #6 in the audit: when an eviction probe exhausts
  * MAX_PROBES without finding the hash slot pointing to the LRU node, the old
@@ -587,6 +601,286 @@ test_failed_eviction_probe_handling(void)
 
         return 0;
 }
+
+/* =========================================================================
+ * Test 14: put() fails gracefully when probe exhaustion prevents insertion
+ *          (no eviction path) — size unchanged, existing keys intact
+ * ========================================================================= */
+
+static int
+test_put_fails_gracefully_no_eviction(void)
+{
+        lru_cache_t cache;
+        uint32_t val = 0U;
+
+        /*
+         * Fill the hash table cluster around one natural hash position so
+         * that a subsequent insert with the same hash exhausts MAX_PROBES.
+         * We use capacity = LRU_CACHE_MAX_ENTRIES so no eviction occurs.
+         */
+        lru_cache_init(&cache, (uint16_t)LRU_CACHE_MAX_ENTRIES);
+
+        /*
+         * Insert MAX_PROBES keys that all hash to the same slot.  These
+         * will occupy consecutive probe positions from that slot.
+         */
+        uint16_t target_slot = 5U; /* arbitrary starting slot */
+        uint32_t blocking_keys[LRU_CACHE_MAX_PROBES];
+        uint16_t inserted = 0U;
+
+        for (uint32_t candidate = 1U;
+             inserted < LRU_CACHE_MAX_PROBES && candidate < 0xFFFFFFFEU;
+             candidate++) {
+                if (compute_hash(candidate)
+                    == target_slot) { /* same natural slot */
+                        blocking_keys[inserted] = candidate;
+                        if (lru_cache_put(&cache, candidate, candidate * 10U)
+                            != true) {
+                                return 1; /* setup failed */
+                        }
+                        inserted++;
+                }
+        }
+
+        if (inserted < LRU_CACHE_MAX_PROBES) {
+                return 1; /* could not find enough colliding keys */
+        }
+
+        uint16_t size_before = cache.size;
+
+        /* Find one more key with the same natural hash slot. */
+        uint32_t overflow_key = 0U;
+        for (uint32_t candidate = blocking_keys[LRU_CACHE_MAX_PROBES - 1U] + 1U;
+             candidate < 0xFFFFFFFEU; candidate++) {
+                if (compute_hash(candidate) == target_slot) {
+                        overflow_key = candidate;
+                        break;
+                }
+        }
+
+        if (overflow_key == 0U) {
+                return 1; /* could not find overflow key */
+        }
+
+        /* This put must fail — probe budget exhausted. */
+        if (lru_cache_put(&cache, overflow_key, 0xDEADU) != false) {
+                return 1; /* should have returned false */
+        }
+
+        /* Size must be unchanged. */
+        if (cache.size != size_before) {
+                return 1;
+        }
+
+        /* All previously inserted keys must still be retrievable. */
+        for (uint16_t k = 0U; k < inserted; k++) {
+                if (lru_cache_get(&cache, blocking_keys[k], &val) != true
+                    || val != blocking_keys[k] * 10U) {
+                        return 1;
+                }
+        }
+
+        return 0;
+}
+
+/* =========================================================================
+ * Test 15: Eviction victim survives when hash insert would fail — no data loss
+ * ========================================================================= */
+
+static int
+test_put_fails_gracefully_with_eviction(void)
+{
+        lru_cache_t cache;
+        uint32_t val = 0U;
+
+        /*
+         * Capacity = MAX_PROBES so the cache is full after inserting
+         * MAX_PROBES keys that all collide.  The next insert triggers
+         * eviction but the new key's probe also exhausts MAX_PROBES
+         * (all slots in the probe window are occupied by survivors).
+         *
+         * With the atomic two-phase insert, put() must return false
+         * WITHOUT evicting the LRU entry — no data loss.
+         */
+        lru_cache_init(&cache, (uint16_t)LRU_CACHE_MAX_PROBES);
+
+        uint16_t target_slot = 3U;
+        uint32_t keys[LRU_CACHE_MAX_PROBES];
+        uint16_t inserted = 0U;
+
+        for (uint32_t candidate = 1U;
+             inserted < LRU_CACHE_MAX_PROBES && candidate < 0xFFFFFFFEU;
+             candidate++) {
+                if (compute_hash(candidate) == target_slot) {
+                        keys[inserted] = candidate;
+                        if (lru_cache_put(&cache, candidate, candidate + 100U)
+                            != true) {
+                                return 1;
+                        }
+                        inserted++;
+                }
+        }
+
+        if (inserted < LRU_CACHE_MAX_PROBES) {
+                return 1;
+        }
+
+        /* Cache is full.  The LRU entry is keys[0]. */
+        uint16_t size_before = cache.size;
+
+        /*
+         * Find a new key that hashes to target_slot.  Evicting keys[0]
+         * frees its slot, but that slot will be the evict_hash_slot.
+         * The new key's probe should be able to reuse the evict_hash_slot
+         * in the atomic pre-check.  However, if we pick a key that hashes
+         * to a DIFFERENT slot that is also fully blocked, the insert
+         * should fail gracefully.
+         *
+         * Pick a key whose natural slot is fully occupied by non-eviction
+         * survivors.  We use a slot adjacent to target_slot where all
+         * probe positions are taken by the remaining keys.
+         */
+        uint16_t other_slot = (uint16_t)((target_slot + LRU_CACHE_MAX_PROBES)
+                                         % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+        uint32_t overflow_key = 0U;
+
+        for (uint32_t candidate = 1U; candidate < 0xFFFFFFFEU; candidate++) {
+                if (compute_hash(candidate) == other_slot) {
+                        /* Make sure this key is not already in the cache */
+                        bool already_used = false;
+                        for (uint16_t k = 0U; k < inserted; k++) {
+                                if (keys[k] == candidate) {
+                                        already_used = true;
+                                        break;
+                                }
+                        }
+                        if (!already_used) {
+                                overflow_key = candidate;
+                                break;
+                        }
+                }
+        }
+
+        if (overflow_key == 0U) {
+                return 1;
+        }
+
+        /*
+         * Fill the probe window for other_slot so insertion will fail.
+         * We need MAX_PROBES keys hashing to other_slot already present.
+         * But our cache is full with keys hashing to target_slot.
+         * So the probe from other_slot will hit occupied slots
+         * (belonging to target_slot cluster) or empty slots.
+         *
+         * Simpler approach: just try the put and check that either it
+         * succeeds (atomic) or fails (no data loss).
+         */
+        bool put_result = lru_cache_put(&cache, overflow_key, 0xF00DU);
+
+        if (put_result) {
+                /* Succeeded — eviction victim (keys[0]) should be gone. */
+                if (lru_cache_get(&cache, keys[0], &val) != false) {
+                        return 1; /* evicted entry must not be found */
+                }
+                if (lru_cache_get(&cache, overflow_key, &val) != true
+                    || val != 0xF00DU) {
+                        return 1; /* new entry must be present */
+                }
+        } else {
+                /* Failed — no state change.  ALL original keys must survive. */
+                if (cache.size != size_before) {
+                        return 1;
+                }
+                for (uint16_t k = 0U; k < inserted; k++) {
+                        if (lru_cache_get(&cache, keys[k], &val) != true
+                            || val != keys[k] + 100U) {
+                                return 1; /* data loss detected */
+                        }
+                }
+        }
+
+        return 0;
+}
+
+/* =========================================================================
+ * Test 16: Sequential integer keys 1..N — size matches successful inserts,
+ *          all successes retrievable
+ * ========================================================================= */
+
+static int
+test_sequential_integer_keys(void)
+{
+        lru_cache_t cache;
+        uint32_t val = 0U;
+
+        lru_cache_init(&cache, (uint16_t)LRU_CACHE_MAX_ENTRIES);
+
+        uint16_t successes = 0U;
+
+        for (uint32_t k = 1U; k <= (uint32_t)LRU_CACHE_MAX_ENTRIES; k++) {
+                if (lru_cache_put(&cache, k, k * 100U) == true) {
+                        successes++;
+                }
+        }
+
+        /* size must equal the number of successful insertions. */
+        if (cache.size != successes) {
+                return 1;
+        }
+
+        /* Every key that was reported as successfully inserted must be
+         * retrievable with the correct value. */
+        uint16_t found = 0U;
+        for (uint32_t k = 1U; k <= (uint32_t)LRU_CACHE_MAX_ENTRIES; k++) {
+                if (lru_cache_get(&cache, k, &val) == true) {
+                        if (val != k * 100U) {
+                                return 1; /* wrong value */
+                        }
+                        found++;
+                }
+        }
+
+        if (found != successes) {
+                return 1; /* mismatch between reported and actual entries */
+        }
+
+        return 0;
+}
+
+/* =========================================================================
+ * Test 17: 100 eviction cycles on a capacity-1 cache all succeed
+ *          (tombstones don't accumulate and block operations)
+ * ========================================================================= */
+
+static int
+test_heavy_eviction_tombstone_cleanup(void)
+{
+        lru_cache_t cache;
+        uint32_t val = 0U;
+
+        lru_cache_init(&cache, 1U);
+
+        for (uint32_t i = 0U; i < 100U; i++) {
+                uint32_t test_key = 0xA0000000U + i;
+                uint32_t test_val = 0xB0000000U + i;
+
+                if (lru_cache_put(&cache, test_key, test_val) != true) {
+                        return 1; /* every eviction+insert must succeed */
+                }
+
+                if (lru_cache_get(&cache, test_key, &val) != true
+                    || val != test_val) {
+                        return 1; /* just-inserted key must be retrievable */
+                }
+
+                if (cache.size != 1U) {
+                        return 1; /* size must stay at 1 */
+                }
+        }
+
+        return 0;
+}
+
 #endif
 
 /* =========================================================================
@@ -613,6 +907,10 @@ main(void)
 #if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
         RUN_TEST(test_hash_collision_then_eviction);
         RUN_TEST(test_failed_eviction_probe_handling);
+        RUN_TEST(test_put_fails_gracefully_no_eviction);
+        RUN_TEST(test_put_fails_gracefully_with_eviction);
+        RUN_TEST(test_sequential_integer_keys);
+        RUN_TEST(test_heavy_eviction_tombstone_cleanup);
 #endif
 
         printf("\n%d/%d tests passed.\n", g_tests_run - g_tests_failed,

@@ -90,6 +90,10 @@ _Static_assert(LRU_CACHE_HASH_TABLE_SIZE >= LRU_CACHE_MAX_ENTRIES,
 _Static_assert(LRU_CACHE_MAX_PROBES <= LRU_CACHE_HASH_TABLE_SIZE,
                "LRU_CACHE_MAX_PROBES must be <= LRU_CACHE_HASH_TABLE_SIZE");
 
+_Static_assert(LRU_CACHE_MAX_ENTRIES > 0U, "LRU_CACHE_MAX_ENTRIES must be > 0");
+
+_Static_assert(LRU_CACHE_MAX_PROBES > 0U, "LRU_CACHE_MAX_PROBES must be > 0");
+
 /**
  * @brief Reserved sentinel for an empty/invalid key slot.
  *

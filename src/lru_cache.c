@@ -1,11 +1,16 @@
 /**
  * @file lru_cache.c
  * @brief Implementation of the MISRA C compliant LRU Cache.
+ *
+ * Deviation: MISRA C:2012 Rule 15.5 (Advisory) — multiple return statements.
+ * Rationale: Each public function uses early-return for precondition checks.
+ * Refactoring to a single exit point would require deeply nested
+ * conditionals or goto-cleanup, reducing readability without safety benefit.
  */
 
 #include "lru_cache.h"
 
-#include <string.h>
+#include <stddef.h>
 
 /* -------------------------------------------------------------------------
  * Internal helpers
@@ -120,8 +125,11 @@ find_node_index(const lru_cache_t *cache_ptr, uint32_t key)
                         continue;
                 }
 
-                if (cache_ptr->nodes[stored_idx].key == key) {
-                        return stored_idx;
+                if (stored_idx >= 0
+                    && (uint16_t)stored_idx < LRU_CACHE_MAX_ENTRIES) {
+                        if (cache_ptr->nodes[stored_idx].key == key) {
+                                return stored_idx;
+                        }
                 }
 
                 /* Linear probe to next slot (wraps around). */
@@ -200,6 +208,50 @@ lru_cache_get(lru_cache_t *cache_ptr, uint32_t key, uint32_t *out_value)
         return true;
 }
 
+/**
+ * @brief Convert trailing tombstones to empty slots after an eviction.
+ *
+ * When a tombstone's successor slot is empty (-1), the tombstone itself
+ * can safely become empty because no probe chain crosses it.  We then
+ * walk backward and convert any consecutive preceding tombstones that
+ * now also trail into empty space.  Bounded to MAX_PROBES iterations
+ * for deterministic WCET.
+ *
+ * @param cache_ptr       Cache instance.
+ * @param tombstone_slot  The slot that was just set to TOMBSTONE.
+ */
+static void
+cleanup_trailing_tombstones(lru_cache_t *cache_ptr, uint16_t tombstone_slot)
+{
+        /* Check if the slot AFTER the tombstone is empty. */
+        uint16_t next_slot =
+            (uint16_t)((tombstone_slot + 1U)
+                       % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+
+        if (cache_ptr->hash_table[next_slot] != (int16_t)-1) {
+                return; /* successor is occupied; tombstone must stay */
+        }
+
+        /* Convert this tombstone to empty. */
+        cache_ptr->hash_table[tombstone_slot] = (int16_t)-1;
+
+        /* Walk backward converting consecutive tombstones to empty. */
+        uint16_t steps = 1U;
+        uint16_t prev_slot = (uint16_t)(
+            (tombstone_slot + (uint32_t)LRU_CACHE_HASH_TABLE_SIZE - 1U)
+            % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+
+        while (steps < LRU_CACHE_MAX_PROBES
+               && cache_ptr->hash_table[prev_slot]
+                      == LRU_CACHE_HASH_TOMBSTONE) {
+                cache_ptr->hash_table[prev_slot] = (int16_t)-1;
+                prev_slot = (uint16_t)(
+                    (prev_slot + (uint32_t)LRU_CACHE_HASH_TABLE_SIZE - 1U)
+                    % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+                steps++;
+        }
+}
+
 bool
 lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
 {
@@ -216,96 +268,94 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                 return true;
         }
 
-        /* --- Insert path -------------------------------------------------- */
+        /* =================================================================
+         * Insert path — two-phase commit
+         *
+         * PHASE 1: Pre-check (read-only).  Determine all positions and
+         *          indices needed for insertion.  If any step fails,
+         *          return false with zero state modifications.
+         *
+         * PHASE 2: Commit (all mutations, guaranteed to succeed).
+         * ================================================================= */
 
-        /* Evict LRU tail when the cache is full. */
-        if (cache_ptr->size >= cache_ptr->capacity) {
-                int16_t lru_idx = cache_ptr->tail_idx;
+        bool needs_eviction = (cache_ptr->size >= cache_ptr->capacity);
+        int16_t lru_idx = -1;
+        uint16_t evict_hash_slot = 0U;
+        int16_t free_idx = -1;
+        uint16_t insert_hash_slot = 0U;
 
-                if (lru_idx != -1) {
+        /* --- PHASE 1: Pre-check ------------------------------------------ */
+
+        if (needs_eviction) {
+                lru_idx = cache_ptr->tail_idx;
+
+                if (lru_idx == -1) {
                         /*
-                         * Locate and clear the hash-table slot that points to
-                         * this node.  We must probe, because the node may have
-                         * been placed at a probed offset from its natural slot.
-                         */
-                        uint16_t old_hash =
-                            compute_hash(cache_ptr->nodes[lru_idx].key);
-                        uint16_t evict_probe = 0U;
-                        bool hash_slot_found = false;
-
-                        while (evict_probe < LRU_CACHE_MAX_PROBES) {
-                                if (cache_ptr->hash_table[old_hash]
-                                    == lru_idx) {
-                                        cache_ptr->hash_table[old_hash] =
-                                            LRU_CACHE_HASH_TOMBSTONE;
-                                        hash_slot_found = true;
-                                        break;
-                                }
-                                old_hash =
-                                    (uint16_t)((old_hash + 1U)
-                                               % (uint32_t)
-                                                   LRU_CACHE_HASH_TABLE_SIZE);
-                                evict_probe++;
-                        }
-
-                        /*
-                         * If we cannot find the hash slot pointing to the LRU
-                         * node, abort the operation. Proceeding would leave a
-                         * stale hash table entry that points to this
-                         * (soon-to-be reused) node index, leading to duplicate
-                         * entries and silent data corruption once the node is
-                         * repopulated.
-                         */
-                        if (!hash_slot_found) {
-                                return false;
-                        }
-
-                        remove_from_list(cache_ptr, lru_idx);
-                        cache_ptr->nodes[lru_idx].key = LRU_CACHE_INVALID_KEY;
-                } else {
-                        /*
-                         * tail_idx is -1 but size >= capacity. This should
-                         * never happen in a correctly initialized cache and
-                         * indicates internal corruption. Fail safely.
+                         * tail_idx is -1 but size >= capacity.  Internal
+                         * corruption — fail safely.
                          */
                         return false;
                 }
-                /* size stays the same -- we are replacing one item */
-        } else {
-                cache_ptr->size++;
-        }
 
-        /* Find the first free node slot (INVALID_KEY marker). */
-        int16_t free_idx = -1;
-        uint16_t i = 0U;
-        while (i < LRU_CACHE_MAX_ENTRIES) {
-                if (cache_ptr->nodes[i].key == LRU_CACHE_INVALID_KEY) {
-                        free_idx = (int16_t)i;
-                        break;
+                /*
+                 * Locate the eviction victim's hash slot (don't modify it).
+                 */
+                uint16_t old_hash =
+                    compute_hash(cache_ptr->nodes[lru_idx].key);
+                uint16_t evict_probe = 0U;
+                bool evict_slot_found = false;
+
+                while (evict_probe < LRU_CACHE_MAX_PROBES) {
+                        if (cache_ptr->hash_table[old_hash] == lru_idx) {
+                                evict_hash_slot = old_hash;
+                                evict_slot_found = true;
+                                break;
+                        }
+                        old_hash =
+                            (uint16_t)((old_hash + 1U)
+                                       % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+                        evict_probe++;
                 }
-                i++;
-        }
 
-        if (free_idx == -1) {
-                return false; /* should never happen; safety fallback */
-        }
+                if (!evict_slot_found) {
+                        return false; /* cannot find victim's hash entry */
+                }
 
-        /* Write the new node. */
-        cache_ptr->nodes[free_idx].key = key;
-        cache_ptr->nodes[free_idx].value = value;
+                /* Reuse the evicted node's slot. */
+                free_idx = lru_idx;
+        } else {
+                /* Find the first free node slot (INVALID_KEY marker). */
+                uint16_t i = 0U;
+                while (i < LRU_CACHE_MAX_ENTRIES) {
+                        if (cache_ptr->nodes[i].key == LRU_CACHE_INVALID_KEY) {
+                                free_idx = (int16_t)i;
+                                break;
+                        }
+                        i++;
+                }
+
+                if (free_idx == -1) {
+                        return false; /* no free slot — safety fallback */
+                }
+        }
 
         /*
-         * Insert into the hash table with linear probing so that colliding
-         * keys are placed in adjacent slots and can be found during lookup.
+         * Probe for the new key's hash insertion slot.
+         * Accept: empty (-1), tombstone, or the eviction victim's slot
+         * (which will be freed in the commit phase).
          */
         uint16_t hash_idx = compute_hash(key);
         uint16_t insert_probe = 0U;
+        bool insert_slot_found = false;
 
         while (insert_probe < LRU_CACHE_MAX_PROBES) {
-                if (cache_ptr->hash_table[hash_idx] == (int16_t)-1
-                    || cache_ptr->hash_table[hash_idx]
-                           == LRU_CACHE_HASH_TOMBSTONE) {
-                        /* found empty or tombstone slot - use it */
+                int16_t slot_val = cache_ptr->hash_table[hash_idx];
+
+                if (slot_val == (int16_t)-1
+                    || slot_val == LRU_CACHE_HASH_TOMBSTONE
+                    || (needs_eviction && hash_idx == evict_hash_slot)) {
+                        insert_hash_slot = hash_idx;
+                        insert_slot_found = true;
                         break;
                 }
                 hash_idx = (uint16_t)((hash_idx + 1U)
@@ -313,12 +363,37 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                 insert_probe++;
         }
 
-        if (insert_probe < LRU_CACHE_MAX_PROBES) {
-                cache_ptr->hash_table[hash_idx] = free_idx;
-        } else {
-                return false; /* probe limit reached, insertion failed */
+        if (!insert_slot_found) {
+                return false; /* probe exhausted — no state was modified */
         }
 
+        /* --- PHASE 2: Commit (all mutations, guaranteed to succeed) ------ */
+
+        if (needs_eviction) {
+                /* Tombstone old hash slot. */
+                cache_ptr->hash_table[evict_hash_slot] =
+                    LRU_CACHE_HASH_TOMBSTONE;
+
+                /* Clean up trailing tombstones to prevent accumulation. */
+                cleanup_trailing_tombstones(cache_ptr, evict_hash_slot);
+
+                /* Remove victim from LRU list and clear its key. */
+                remove_from_list(cache_ptr, lru_idx);
+                cache_ptr->nodes[lru_idx].key = LRU_CACHE_INVALID_KEY;
+                /* size stays the same — replacing one item */
+        } else {
+                cache_ptr->size++;
+        }
+
+        /* Write key/value to the node. */
+        cache_ptr->nodes[free_idx].key = key;
+        cache_ptr->nodes[free_idx].value = value;
+
+        /* Write node index into the hash table. */
+        cache_ptr->hash_table[insert_hash_slot] = free_idx;
+
+        /* Link at MRU position. */
         add_to_front(cache_ptr, free_idx);
+
         return true;
 }
