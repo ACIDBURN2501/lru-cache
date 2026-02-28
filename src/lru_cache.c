@@ -107,8 +107,17 @@ find_node_index(const lru_cache_t *cache_ptr, uint32_t key)
         while (probe_count < LRU_CACHE_MAX_PROBES) {
                 int16_t stored_idx = cache_ptr->hash_table[hash_idx];
 
-                if (stored_idx == -1) {
-                        return -1; /* empty slot -- key absent */
+                if (stored_idx == (int16_t)-1) {
+                        return -1; /* true empty slot -- key absent */
+                }
+
+                if (stored_idx == LRU_CACHE_HASH_TOMBSTONE) {
+                        /* tombstone from eviction -- continue probing */
+                        hash_idx =
+                            (uint16_t)((hash_idx + 1U)
+                                       % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+                        probe_count++;
+                        continue;
                 }
 
                 if (cache_ptr->nodes[stored_idx].key == key) {
@@ -225,7 +234,8 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                         while (evict_probe < LRU_CACHE_MAX_PROBES) {
                                 if (cache_ptr->hash_table[old_hash]
                                     == lru_idx) {
-                                        cache_ptr->hash_table[old_hash] = -1;
+                                        cache_ptr->hash_table[old_hash] =
+                                            LRU_CACHE_HASH_TOMBSTONE;
                                         break;
                                 }
                                 old_hash =
@@ -268,15 +278,24 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
          */
         uint16_t hash_idx = compute_hash(key);
         uint16_t insert_probe = 0U;
+
         while (insert_probe < LRU_CACHE_MAX_PROBES) {
-                if (cache_ptr->hash_table[hash_idx] == -1) {
-                        break; /* empty slot found */
+                if (cache_ptr->hash_table[hash_idx] == (int16_t)-1
+                    || cache_ptr->hash_table[hash_idx]
+                           == LRU_CACHE_HASH_TOMBSTONE) {
+                        /* found empty or tombstone slot - use it */
+                        break;
                 }
                 hash_idx = (uint16_t)((hash_idx + 1U)
                                       % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
                 insert_probe++;
         }
-        cache_ptr->hash_table[hash_idx] = free_idx;
+
+        if (insert_probe < LRU_CACHE_MAX_PROBES) {
+                cache_ptr->hash_table[hash_idx] = free_idx;
+        } else {
+                return false; /* probe limit reached, insertion failed */
+        }
 
         add_to_front(cache_ptr, free_idx);
         return true;

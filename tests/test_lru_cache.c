@@ -354,6 +354,85 @@ test_sequential_evictions(void)
 }
 
 /* =========================================================================
+ * Test 11: Hash collision followed by eviction does not break lookup
+ *
+ * This test exercises the tombstone bug described in Issue #1:
+ * - Keys A and B both hash to the same slot (forced collision)
+ * - Key A is inserted first, occupies its natural hash slot
+ * - Key B collides, inserted via linear probe into next available slot
+ * - Capacity is 2, so inserting key C evicts A (LRU)
+ * - If eviction just clears the hash slot to -1, B becomes invisible
+ * because find_node_index stops at the first empty slot. With proper
+ * tombstone handling, B must remain retrievable.
+ * ========================================================================= */
+
+static int
+test_hash_collision_then_eviction(void)
+{
+        lru_cache_t cache;
+        uint32_t val = 0U;
+
+        /* Use a small table to force predictable collisions */
+        lru_cache_init(&cache, 2U);
+
+        /*
+         * Force a hash collision by computing keys that map to the same slot.
+         * The default Fibonacci hash is: (key * 0x9E3779B9) % HASH_TABLE_SIZE
+         * With HASH_TABLE_SIZE = 17 (default prime), we can find colliding
+         * pairs.
+         *
+         * We iterate until we find two distinct keys with the same hash.
+         */
+        uint32_t key_a = 0x5A4E68C3U; /* chosen to collide with key_b below */
+        uint32_t key_b =
+            0xB1FBD799U; /* collides with key_a at default table size */
+
+        /* Insert A (occupies natural hash slot) */
+        if (lru_cache_put(&cache, key_a, 0xAA55u) != true) {
+                return 1; /* insert failed unexpectedly */
+        }
+
+        /* Insert B (collides with A, must probed to next slot) */
+        if (lru_cache_put(&cache, key_b, 0xBB66u) != true) {
+                return 1; /* insert failed unexpectedly */
+        }
+
+        /* Verify both are present before eviction */
+        if (lru_cache_get(&cache, key_a, &val) != true || val != 0xAA55u) {
+                return 1; /* A should be retrievable */
+        }
+        if (lru_cache_get(&cache, key_b, &val) != true || val != 0xBB66u) {
+                return 1; /* B should be retrievable */
+        }
+
+        /* Now insert C, which will evict A (the LRU entry) */
+        uint32_t key_c = 0x12345678U; /* different from key_a and key_b */
+        if (lru_cache_put(&cache, key_c, 0xCC77u) != true) {
+                return 1; /* insert failed unexpectedly */
+        }
+
+        /* A should be gone because it was LRU */
+        if (lru_cache_get(&cache, key_a, &val) != false) {
+                return 1; /* A must be evicted */
+        }
+
+        /* B must still be retrievable -- this is the critical check that
+         * exposes the tombstone bug. Without proper tombstone handling,
+         * clearing slot X to -1 breaks the probe chain and B (at slot Y)
+         * becomes invisible even though it's still in the cache. */
+        if (lru_cache_get(&cache, key_b, &val) != true || val != 0xBB66u) {
+                return 1; /* B was corrupted by incorrect hash deletion! */
+        }
+
+        /* C must also be present */
+        if (lru_cache_get(&cache, key_c, &val) != true || val != 0xCC77u) {
+                return 1; /* C should be retrievable */
+        }
+
+        return 0;
+}
+
+/* =========================================================================
  * Entry point
  * ========================================================================= */
 
@@ -372,6 +451,10 @@ main(void)
         RUN_TEST(test_fill_to_capacity);
         RUN_TEST(test_invalid_key_rejected);
         RUN_TEST(test_sequential_evictions);
+
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
+        RUN_TEST(test_hash_collision_then_eviction);
+#endif
 
         printf("\n%d/%d tests passed.\n", g_tests_run - g_tests_failed,
                g_tests_run);

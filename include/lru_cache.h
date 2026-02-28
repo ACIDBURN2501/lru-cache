@@ -82,7 +82,16 @@
  *
  * Do NOT use 0xFFFFFFFFU as a user key.
  */
-#define LRU_CACHE_INVALID_KEY 0xFFFFFFFFU
+#define LRU_CACHE_INVALID_KEY    0xFFFFFFFFU
+
+/**
+ * @brief Tombstone marker for deleted hash table slots.
+ *
+ * Used to maintain probe chain integrity when entries are evicted.
+ * Must be distinct from empty slot marker (-1) and valid indices (>= 0).
+ * Value is -2, which fits in int16_t but is outside the valid range.
+ */
+#define LRU_CACHE_HASH_TOMBSTONE ((int16_t)-2)
 
 /* -------------------------------------------------------------------------
  * Data types
