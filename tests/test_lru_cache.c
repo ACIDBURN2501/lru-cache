@@ -293,7 +293,7 @@ test_fill_to_capacity(void)
 }
 
 /* =========================================================================
- * Test 9: The reserved INVALID_KEY is rejected by put()
+ * Test  9: The reserved INVALID_KEY is rejected by put()
  * ========================================================================= */
 
 static int
@@ -317,11 +317,65 @@ test_invalid_key_rejected(void)
 }
 
 /* =========================================================================
- * Test 10: Sequential evictions maintain correct LRU ordering
+ * Test 10: Capacity clamping on init prevents uninitialized cache structures
  * ========================================================================= */
 
 static int
-test_sequential_evictions(void)
+test_capacity_clamping(void)
+{
+        lru_cache_t cache;
+        uint32_t val = 0U;
+
+        /* Initialize with capacity exceeding LRU_CACHE_MAX_ENTRIES.
+         * The cache should be clamped to LRU_CACHE_MAX_ENTRIES instead of
+         * silently failing, which would leave the struct uninitialized. */
+        lru_cache_init(&cache, (uint16_t)(LRU_CACHE_MAX_ENTRIES + 10U));
+
+        /* Verify capacity is clamped to max */
+        if (cache.capacity != LRU_CACHE_MAX_ENTRIES) {
+                return 1;
+        }
+
+        /* The cache must be usable after clamping - insert operations should
+         * work */
+        if (lru_cache_put(&cache, 42U, 12345U) != true) {
+                return 1;
+        }
+
+        /* And retrieval should work as well */
+        if (lru_cache_get(&cache, 42U, &val) != true || val != 12345U) {
+                return 1;
+        }
+
+        /* size should be 1 after successful insertion */
+        if (cache.size != 1U) {
+                return 1;
+        }
+
+        /* Test with a much larger capacity value */
+        lru_cache_init(&cache, UINT16_MAX);
+        if (cache.capacity != LRU_CACHE_MAX_ENTRIES) {
+                return 1;
+        }
+
+        /* Cache must still be functional */
+        if (lru_cache_put(&cache, 99U, 88U) != true) {
+                return 1;
+        }
+
+        if (lru_cache_get(&cache, 99U, &val) != true || val != 88U) {
+                return 1;
+        }
+
+        return 0;
+}
+
+/* =========================================================================
+ * Test 11: Sequential evictions maintain correct LRU ordering
+ * ========================================================================= */
+
+static int
+test_sequential_eviction(void)
 {
         lru_cache_t cache;
         uint32_t val = 0U;
@@ -450,7 +504,8 @@ main(void)
         RUN_TEST(test_null_pointer_safety);
         RUN_TEST(test_fill_to_capacity);
         RUN_TEST(test_invalid_key_rejected);
-        RUN_TEST(test_sequential_evictions);
+        RUN_TEST(test_capacity_clamping);
+        RUN_TEST(test_sequential_eviction);
 
 #if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
         RUN_TEST(test_hash_collision_then_eviction);

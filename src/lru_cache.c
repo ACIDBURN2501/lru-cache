@@ -150,11 +150,17 @@ find_node_index(const lru_cache_t *cache_ptr, uint32_t key)
 void
 lru_cache_init(lru_cache_t *cache_ptr, uint16_t capacity)
 {
-        if (cache_ptr == NULL || capacity > LRU_CACHE_MAX_ENTRIES) {
+        if (cache_ptr == NULL) {
                 return;
         }
 
-        cache_ptr->capacity = (capacity == 0U) ? 1U : capacity;
+        if (capacity > LRU_CACHE_MAX_ENTRIES) {
+                cache_ptr->capacity = (uint16_t)LRU_CACHE_MAX_ENTRIES;
+        } else if (capacity == 0U) {
+                cache_ptr->capacity = 1U;
+        } else {
+                cache_ptr->capacity = capacity;
+        }
         cache_ptr->size = 0U;
         cache_ptr->head_idx = -1;
         cache_ptr->tail_idx = -1;
