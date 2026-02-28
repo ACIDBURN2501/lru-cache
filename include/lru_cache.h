@@ -77,6 +77,19 @@
 #define LRU_CACHE_LOOKUP_STRATEGY LRU_CACHE_LOOKUP_HASH
 #endif
 
+/* -------------------------------------------------------------------------
+ * Compile-time configuration validation
+ * ------------------------------------------------------------------------- */
+
+_Static_assert(LRU_CACHE_MAX_ENTRIES <= 32767U,
+               "LRU_CACHE_MAX_ENTRIES must be <= INT16_MAX (32767)");
+
+_Static_assert(LRU_CACHE_HASH_TABLE_SIZE >= LRU_CACHE_MAX_ENTRIES,
+               "LRU_CACHE_HASH_TABLE_SIZE must be >= LRU_CACHE_MAX_ENTRIES");
+
+_Static_assert(LRU_CACHE_MAX_PROBES <= LRU_CACHE_HASH_TABLE_SIZE,
+               "LRU_CACHE_MAX_PROBES must be <= LRU_CACHE_HASH_TABLE_SIZE");
+
 /**
  * @brief Reserved sentinel for an empty/invalid key slot.
  *
