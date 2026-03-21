@@ -224,9 +224,8 @@ static void
 cleanup_trailing_tombstones(lru_cache_t *cache_ptr, uint16_t tombstone_slot)
 {
         /* Check if the slot AFTER the tombstone is empty. */
-        uint16_t next_slot =
-            (uint16_t)((tombstone_slot + 1U)
-                       % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+        uint16_t next_slot = (uint16_t)((tombstone_slot + 1U)
+                                        % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
 
         if (cache_ptr->hash_table[next_slot] != (int16_t)-1) {
                 return; /* successor is occupied; tombstone must stay */
@@ -237,17 +236,19 @@ cleanup_trailing_tombstones(lru_cache_t *cache_ptr, uint16_t tombstone_slot)
 
         /* Walk backward converting consecutive tombstones to empty. */
         uint16_t steps = 1U;
-        uint16_t prev_slot = (uint16_t)(
-            (tombstone_slot + (uint32_t)LRU_CACHE_HASH_TABLE_SIZE - 1U)
-            % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+        uint16_t prev_slot =
+            (uint16_t)((tombstone_slot + (uint32_t)LRU_CACHE_HASH_TABLE_SIZE
+                        - 1U)
+                       % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
 
         while (steps < LRU_CACHE_MAX_PROBES
                && cache_ptr->hash_table[prev_slot]
                       == LRU_CACHE_HASH_TOMBSTONE) {
                 cache_ptr->hash_table[prev_slot] = (int16_t)-1;
-                prev_slot = (uint16_t)(
-                    (prev_slot + (uint32_t)LRU_CACHE_HASH_TABLE_SIZE - 1U)
-                    % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
+                prev_slot =
+                    (uint16_t)((prev_slot + (uint32_t)LRU_CACHE_HASH_TABLE_SIZE
+                                - 1U)
+                               % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
                 steps++;
         }
 }
@@ -300,8 +301,7 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                 /*
                  * Locate the eviction victim's hash slot (don't modify it).
                  */
-                uint16_t old_hash =
-                    compute_hash(cache_ptr->nodes[lru_idx].key);
+                uint16_t old_hash = compute_hash(cache_ptr->nodes[lru_idx].key);
                 uint16_t evict_probe = 0U;
                 bool evict_slot_found = false;
 
