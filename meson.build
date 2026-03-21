@@ -1,62 +1,80 @@
 project(
-        'lru-cache',
-        'c',
-        version         : '1.0.6',
-        license         : 'MIT',
-        default_options : [
-                'c_std=c11',
-                'warning_level=2',
-        ],
-        meson_version : '>=0.57.0',
+  'lru-cache',
+  'c',
+  version: '1.1.6',
+  license: 'MIT',
+  default_options: [
+    'c_std=c11',
+    'warning_level=2',
+  ],
+  meson_version: '>=0.57.0',
 )
 
-# ---------------------------------------------------------------------------
-# Version header (generated into the build directory root)
-# ---------------------------------------------------------------------------
+project_description = 'A static-memory, deterministic Least Recently Used (LRU) cache.'
 
-_ver = meson.project_version().split('.')
+# ── Version header ─────────────────────────────────────────────────────────────
 
-_conf = configuration_data()
-_conf.set_quoted('LRU_CACHE_VERSION',       meson.project_version())
-_conf.set(       'LRU_CACHE_VERSION_MAJOR', _ver[0].to_int())
-_conf.set(       'LRU_CACHE_VERSION_MINOR', _ver[1].to_int())
-_conf.set(       'LRU_CACHE_VERSION_PATCH', _ver[2].to_int())
+ver = meson.project_version().split('.')
+major = ver[0].to_int()
+minor = ver[1].to_int()
+patch = ver[2].to_int()
+
+conf = configuration_data()
+conf.set_quoted('VERSION', meson.project_version())
+conf.set('MAJOR', major)
+conf.set('MINOR', minor)
+conf.set('PATCH', patch)
 
 configure_file(
-        input         : 'include' / 'lru_cache_version.h.in',
-        output        : 'lru_cache_version.h',
-        configuration : _conf,
-        install       : true,
-        install_dir   : get_option('includedir') / 'lru_cache',
+  input: 'config' / 'lru_cache_version.h.in',
+  output: 'lru_cache_verson.h',
+  configuration: conf,
+  install: true,
+  install_dir: get_option('includedir') / 'lru_cache',
 )
 
-install_headers('include' / 'lru_cache.h', subdir : 'lru_cache')
+# ── Include directories ────────────────────────────────────────────────────────
 
-# ---------------------------------------------------------------------------
-# Include directories
-#   public_inc    -- the source include/ tree (lru_cache.h)
-#   generated_inc -- the build root (lru_cache_version.h lands here)
-# ---------------------------------------------------------------------------
+public_headers = include_directories('include')
 
-public_inc    = include_directories('include')
-generated_inc = include_directories('.')
+install_headers('include' / 'lru_cache.h', subdir: 'lru_cache')
 
-# ---------------------------------------------------------------------------
-# Compile-time lookup strategy for the installed library
-# ---------------------------------------------------------------------------
+# ── Application core library ───────────────────────────────────────────────────
+
+library_src = ['src/lru_cache.c']
+
+lru_cache_lib = static_library(
+  'lru-cache',
+  library_src,
+  include_directories: public_headers,
+  install: true,
+)
+
+lru_cache_dep = declare_dependency(
+  include_directories: public_headers,
+  link_with: lru_cache_lib,
+)
+
+meson.override_dependency('lru-cache', lru_cache_dep)
 
 if get_option('lookup_strategy') == 'linear'
-        lru_strategy_arg = '-DLRU_CACHE_LOOKUP_STRATEGY=LRU_CACHE_LOOKUP_LINEAR'
+  lru_strategy_arg = '-DLRU_CACHE_LOOKUP_STRATEGY=LRU_CACHE_LOOKUP_LINEAR'
 else
-        lru_strategy_arg = '-DLRU_CACHE_LOOKUP_STRATEGY=LRU_CACHE_LOOKUP_HASH'
+  lru_strategy_arg = '-DLRU_CACHE_LOOKUP_STRATEGY=LRU_CACHE_LOOKUP_HASH'
 endif
 
-# ---------------------------------------------------------------------------
-# Sub-directories
-# ---------------------------------------------------------------------------
+# ── pkg-config ─────────────────────────────────────────────────────────────────
 
-subdir('src')
+pkg = import('pkgconfig')
+pkg.generate(
+  name: 'lru-cache',
+  description: project_description,
+  filebase: 'lru-cache',
+  version: meson.project_version(),
+)
+
+# ── Host unit tests ────────────────────────────────────────────────────────────
 
 if get_option('build_tests')
-        subdir('tests')
+  subdir('tests')
 endif
