@@ -421,6 +421,7 @@ test_sequential_eviction(void)
         return 0;
 }
 
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
 /* =========================================================================
  * Test 12: Hash collision followed by eviction does not break lookup
  *
@@ -499,8 +500,6 @@ test_hash_collision_then_eviction(void)
 
         return 0;
 }
-
-#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
 /* =========================================================================
  * Test 13: Failed eviction probe returns false instead of corrupting state
  *
