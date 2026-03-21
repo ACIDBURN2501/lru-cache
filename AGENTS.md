@@ -98,3 +98,30 @@ meson setup build -Dlookup_strategy=linear
 - Tests live in `tests/test_lru_cache.c`; both strategy executables must pass.
 
 ---
+
+## 5) Validation Requirements
+
+When identifying potential bugs or issues:
+
+1. **Respect API Contracts**: All test cases must honor documented preconditions found in:
+   - Function docstrings (e.g., `@pre: parameter must not be NULL`)
+   - Inline comments and type annotations
+   - Public API documentation
+
+2. **Include Contract Guards**: When testing a function, include the same defensive code the library uses internally:
+   ```c
+   // Before testing a function, include its contract guards
+   if (ptr == NULL) {
+       // Handle contract violation as library does
+       return;
+   }
+   ```
+
+3. **Verify Internal Guards First**: Before reporting a bug, check if the function already has:
+   - NULL checks at the start
+   - Bounds validation
+   - Precondition enforcement
+
+4. **Test Against Real Usage**: Validate findings using the actual API as called by library consumers, not isolated snippets.
+
+---
