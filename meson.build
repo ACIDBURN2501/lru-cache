@@ -1,7 +1,7 @@
 project(
   'lru-cache',
   'c',
-  version: '1.1.6',
+  version: '1.1.7',
   license: 'MIT',
   default_options: [
     'c_std=c11',
@@ -27,7 +27,7 @@ conf.set('PATCH', patch)
 
 configure_file(
   input: 'config' / 'lru_cache_version.h.in',
-  output: 'lru_cache_verson.h',
+  output: 'lru_cache_version.h',
   configuration: conf,
   install: true,
   install_dir: get_option('includedir') / 'lru_cache',
