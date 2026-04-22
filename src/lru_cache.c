@@ -25,6 +25,7 @@
  * @param key  The input key.
  * @return     Hash table index in range [0, LRU_CACHE_HASH_TABLE_SIZE - 1].
  */
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
 static uint16_t
 compute_hash(uint32_t key)
 {
@@ -40,6 +41,7 @@ compute_hash(uint32_t key)
         return (uint16_t)((key * hash_prime)
                           % (uint32_t)LRU_CACHE_HASH_TABLE_SIZE);
 }
+#endif
 
 /**
  * @brief Detach a node from the doubly-linked LRU list.
@@ -181,10 +183,12 @@ lru_cache_init(lru_cache_t *cache_ptr, uint16_t capacity)
                 cache_ptr->nodes[i].next_idx = -1;
         }
 
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
         /* Mark every hash-table slot as empty. */
         for (uint16_t i = 0U; i < LRU_CACHE_HASH_TABLE_SIZE; i++) {
                 cache_ptr->hash_table[i] = -1;
         }
+#endif
 }
 
 bool
@@ -220,6 +224,7 @@ lru_cache_get(lru_cache_t *cache_ptr, uint32_t key, uint32_t *out_value)
  * @param cache_ptr       Cache instance.
  * @param tombstone_slot  The slot that was just set to TOMBSTONE.
  */
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
 static void
 cleanup_trailing_tombstones(lru_cache_t *cache_ptr, uint16_t tombstone_slot)
 {
@@ -252,6 +257,7 @@ cleanup_trailing_tombstones(lru_cache_t *cache_ptr, uint16_t tombstone_slot)
                 steps++;
         }
 }
+#endif
 
 bool
 lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
@@ -281,11 +287,14 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
 
         bool needs_eviction = (cache_ptr->size >= cache_ptr->capacity);
         int16_t lru_idx = -1;
-        uint16_t evict_hash_slot = 0U;
         int16_t free_idx = -1;
-        uint16_t insert_hash_slot = 0U;
 
         /* --- PHASE 1: Pre-check ------------------------------------------ */
+
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
+        uint16_t evict_hash_slot = 0U;
+        uint16_t insert_hash_slot = 0U;
+#endif
 
         if (needs_eviction) {
                 lru_idx = cache_ptr->tail_idx;
@@ -298,6 +307,7 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                         return false;
                 }
 
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
                 /*
                  * Locate the eviction victim's hash slot (don't modify it).
                  */
@@ -320,6 +330,7 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                 if (!evict_slot_found) {
                         return false; /* cannot find victim's hash entry */
                 }
+#endif
 
                 /* Reuse the evicted node's slot. */
                 free_idx = lru_idx;
@@ -339,6 +350,7 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
                 }
         }
 
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
         /*
          * Probe for the new key's hash insertion slot.
          * Accept: empty (-1), tombstone, or the eviction victim's slot
@@ -366,16 +378,19 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
         if (!insert_slot_found) {
                 return false; /* probe exhausted — no state was modified */
         }
+#endif
 
         /* --- PHASE 2: Commit (all mutations, guaranteed to succeed) ------ */
 
         if (needs_eviction) {
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
                 /* Tombstone old hash slot. */
                 cache_ptr->hash_table[evict_hash_slot] =
                     LRU_CACHE_HASH_TOMBSTONE;
 
                 /* Clean up trailing tombstones to prevent accumulation. */
                 cleanup_trailing_tombstones(cache_ptr, evict_hash_slot);
+#endif
 
                 /* Remove victim from LRU list and clear its key. */
                 remove_from_list(cache_ptr, lru_idx);
@@ -389,8 +404,10 @@ lru_cache_put(lru_cache_t *cache_ptr, uint32_t key, uint32_t value)
         cache_ptr->nodes[free_idx].key = key;
         cache_ptr->nodes[free_idx].value = value;
 
+#if (LRU_CACHE_LOOKUP_STRATEGY == LRU_CACHE_LOOKUP_HASH)
         /* Write node index into the hash table. */
         cache_ptr->hash_table[insert_hash_slot] = free_idx;
+#endif
 
         /* Link at MRU position. */
         add_to_front(cache_ptr, free_idx);
