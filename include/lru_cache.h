@@ -1,6 +1,10 @@
 /**
- * @file lru_cache.h
- * @brief MISRA C & IEC-61508 compliant LRU Cache with configurable lookup.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file: lru_cache.h
+ *
+ * @brief
+ *    MISRA C & IEC-61508 compliant LRU Cache with configurable lookup.
  *
  * This module provides a fixed-size LRU cache suitable for safety-critical
  * systems. Lookup strategy (Hash vs Linear) is selected at compile time.
