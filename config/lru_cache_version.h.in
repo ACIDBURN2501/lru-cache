@@ -1,6 +1,10 @@
 /**
- * @file lru_cache_version.h
- * @brief Auto-generated version information.  Do not edit by hand.
+ * SPDX-License-Identifier: MIT
+ *
+ * @file: lru_cache_version.h
+ *
+ * @brief
+ *    Auto-generated version information. Do not edit by hand.
  */
 
 #ifndef LRU_CACHE_VERSION_H

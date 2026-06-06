@@ -5,7 +5,7 @@ project(
   license: 'MIT',
   default_options: [
     'c_std=c11',
-    'warning_level=2',
+    'warning_level=3',
   ],
   meson_version: '>=0.57.0',
 )
